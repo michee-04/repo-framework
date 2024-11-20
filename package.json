@@ -35,8 +35,7 @@
   "homepage": "https://github.com/nodesandbox/repo-framework#readme",
   "dependencies": {
     "@nodesandbox/async-storage": "^0.1.1",
-    "@nodesandbox/logger": "^0.1.2",
-    "@nodesandbox/response-kit": "^0.1.3"
+    "@nodesandbox/logger": "^0.1.2"
   },
   "peerDependencies": {
     "mongoose": "^8.4.3"
