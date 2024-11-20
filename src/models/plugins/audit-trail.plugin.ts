@@ -1,12 +1,12 @@
 import { AsyncStorageService } from '@nodesandbox/async-storage';
 import { LoggerService } from '@nodesandbox/logger';
-import { Schema } from 'mongoose';
+import { Schema, Document } from 'mongoose';
 
-const LOGGER = LoggerService.getInstance()
-const ASYNC_STORAGE = AsyncStorageService.getInstance()
+const LOGGER = LoggerService.getInstance();
+const ASYNC_STORAGE = AsyncStorageService.getInstance();
 
 const auditTrailPlugin = (schema: Schema) => {
-  schema.pre('save', function (next) {
+  schema.pre<Document>('save', function (next) {
     const currentUserId = ASYNC_STORAGE.get('currentUserId');
 
     if (!currentUserId) {
@@ -23,11 +23,18 @@ const auditTrailPlugin = (schema: Schema) => {
     next();
   });
 
-  schema.methods.softDelete = function () {
+  schema.methods.softDelete = async function () {
     const currentUserId = ASYNC_STORAGE.get('currentUserId');
     this.deletedAt = new Date();
     this.deletedBy = currentUserId || null;
-    return this.save();
+    await this.save();
+  };
+
+  schema.methods.restore = async function () {
+    const currentUserId = ASYNC_STORAGE.get('currentUserId');
+    this.deletedAt = null;
+    this.deletedBy = null;
+    await this.save();
   };
 };
 
