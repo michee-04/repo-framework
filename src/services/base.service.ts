@@ -42,7 +42,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       maxLimit: 100,
       defaultPage: 1,
     };
-  
+
     const defaultSearch: SearchConfig<T> = {
       enabled: false,
       fields: [],
@@ -50,13 +50,13 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       fuzzySearch: false,
       weightedFields: {},
     };
-  
+
     const defaultFilter: FilterConfig<T> = {
       allowedFields: [],
       defaultSort: { createdAt: -1 },
       customFilters: {},
     };
-  
+
     const defaultSlug: SlugConfig<T> = {
       enabled: false,
       sourceField: 'name' as keyof T,
@@ -64,18 +64,18 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       generator: slugify,
       uniqueResolver: (baseSlug: string, count: number) => `${baseSlug}-${count}`,
     };
-  
+
     const defaultPopulate: PopulateConfig = {
       fields: [],
       defaultPopulate: false,
     };
-  
+
     const defaultValidation: ValidationConfig<T> = {
       customValidators: {},
       // preValidate: undefined,
       // postValidate: undefined,
     };
-  
+
     const defaultHooks: HooksConfig<T> = {
       // beforeCreate: undefined,
       // afterCreate: undefined,
@@ -84,18 +84,18 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       // beforeDelete: undefined,
       // afterDelete: undefined,
     };
-  
+
     const defaultCache: CacheConfig = {
       enabled: false,
-      ttl: 300, 
+      ttl: 300,
       ignoredFields: [],
     };
-  
+
     const defaultAggregation: AggregationConfig<T> = {
       customPipelines: {},
       virtualFields: {},
     };
-  
+
     return {
       pagination: { ...defaultPagination, ...config.pagination },
       search: {
@@ -145,7 +145,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       softDelete: config.softDelete ?? true
     };
   }
-  
+
 
   private detectUniqueFields(): Set<keyof T> {
     const uniqueFields = new Set<keyof T>();
@@ -175,15 +175,13 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
 
         const exists = await this.exists(query);
         if (exists) {
-          throw new ErrorResponse(
-            'UNIQUE_FIELD_ERROR',
-            `The ${String(field)} must be unique.`,
-            [
-              `Value '${String(doc[field])}' is already taken for ${String(
-                field,
-              )}.`,
+          throw new ErrorResponse({
+            code: 'UNIQUE_FIELD_ERROR',
+            message: `The ${String(field)} must be unique.`,
+            suggestions: [
+              `Value '${String(doc[field])}' is already taken for ${String(field)}.`,
             ],
-          );
+          });
         }
       },
     );
@@ -196,42 +194,42 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     excludeId?: Types.ObjectId,
   ): Promise<void> {
     if (!this.config.slug.enabled) return;
-  
+
     const sourceField = this.config.slug.sourceField;
     const targetField = this.config.slug.targetField;
-  
-    
+
+
     if (!(sourceField in doc)) {
       throw new Error(`Source field '${String(sourceField)}' not found in document.`);
     }
-  
+
     const sourceValue = doc[sourceField];
     if (!sourceValue) return;
-  
+
     let slug = this.config.slug.generator(sourceValue as string);
     let count = 0;
-  
+
     while (true) {
       const query: FilterQuery<T> = {
         [targetField]: slug,
         ...(excludeId && { _id: { $ne: excludeId } }),
       };
-  
+
       const exists = await this.repository.exists(query);
       if (!exists) break;
-  
+
       count++;
       slug = this.config.slug.uniqueResolver(
         this.config.slug.generator(sourceValue as string),
         count,
       );
     }
-  
-    
+
+
     doc[targetField] = slug as T[keyof T];
   }
-  
-  
+
+
 
   private async runCustomValidators(doc: Partial<T>): Promise<void> {
     if (this.config.validation.customValidators) {
@@ -242,11 +240,11 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         if (doc[fieldKey] !== undefined) {
           const isValid = await validator(doc[fieldKey], doc);
           if (!isValid) {
-            throw new ErrorResponse(
-              'VALIDATION_ERROR',
-              `Validation failed for field ${field}.`,
-              [`Invalid value for ${field}.`],
-            );
+            throw new ErrorResponse({
+              code: 'VALIDATION_ERROR',
+              message: `Validation failed for field ${field}.`,
+              suggestions: [`Invalid value for ${field}.`],
+            });
           }
         }
       });
@@ -281,14 +279,14 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     ) {
       return {};
     }
-  
+
     const regexOptions = this.config.search.caseSensitive ? '' : 'i';
     const regex = new RegExp(escapeRegex(searchTerm), regexOptions);
-  
+
     const searchConditions = this.config.search.fields.map((field) =>
       this.createRegexCondition(field, regex)
     );
-  
+
     return {
       $or: searchConditions,
     };
@@ -296,21 +294,21 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
 
   private filterAllowedFields(query: Record<string, any>): FilterQuery<T> {
     if (!this.config.filter.allowedFields.length) return query;
-  
+
     const allowedFieldsSet = new Set(
       this.config.filter.allowedFields.map((field) => field as string)
     );
-  
+
     const filteredQuery = Object.entries(query).reduce((acc, [key, value]) => {
       if (allowedFieldsSet.has(key)) {
         acc[key] = value;
       }
       return acc;
     }, {} as Record<string, any>);
-  
+
     return filteredQuery as FilterQuery<T>;
   }
-  
+
 
   protected getCacheKey(method: string, params: any): string {
     return `${method}:${JSON.stringify(params)}`;
@@ -375,20 +373,24 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         ? await document.populate(this.config.populate.fields)
         : document;
 
-        return {
-          success: true,
-          data: {
-            docs: populatedDoc,
-          },
-        }; 
+      return {
+        success: true,
+        data: {
+          docs: populatedDoc,
+        },
+      };
     } catch (error) {
       return {
         success: false,
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('DATABASE_ERROR', (error as Error).message),
-      };      
+            : new ErrorResponse({
+              code: 'DATABASE_ERROR',
+              message: (error as Error).message,
+              originalError: error as Error,
+            }),
+      };
     }
   }
 
@@ -418,7 +420,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           ...this.filterAllowedFields(query),
           ...this.buildSearchQuery(searchTerm),
         };
-  
+
         const finalSort = sort || this.config.filter.defaultSort;
         const finalPage = Math.max(
           1,
@@ -428,7 +430,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           this.config.pagination.maxLimit,
           limit ?? this.config.pagination.defaultLimit,
         );
-  
+
         const options = {
           sort: finalSort,
           ...(paginate && {
@@ -436,27 +438,27 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
             limit: finalLimit,
           }),
         };
-  
+
         const [documents, total] = await Promise.all([
           this.repository.findAll(finalQuery, options, includeDeleted),
           this.repository.countDocuments({}, includeDeleted),
         ]);
-  
+
         const populatedDocs = populate
           ? await Promise.all(
-              documents.map((doc) => doc.populate(this.config.populate.fields)),
-            )
+            documents.map((doc) => doc.populate(this.config.populate.fields)),
+          )
           : documents;
-  
+
         const results = await this.repository.countDocuments(
           finalQuery,
           includeDeleted,
         );
-  
+
         const itemsFetched = finalPage * finalLimit;
         const remaining = results - itemsFetched;
         const remainingItems = remaining > 0 ? remaining : 0;
-  
+
         return {
           success: true,
           meta: {
@@ -480,11 +482,11 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('DATABASE_ERROR', (error as Error).message,[], error as Error),
-      };
+            : new ErrorResponse({ code: 'DATABASE_ERROR', message: (error as Error).message }),
+      }
     }
   }
-  
+
 
   async findOne(
     query: FilterQuery<T>,
@@ -499,18 +501,18 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           {},
           includeDeleted,
         );
-  
+
         if (!document) {
-          throw new ErrorResponse(
-            'NOT_FOUND_ERROR',
-            'The requested document was not found.',
-          );
+          throw new ErrorResponse({
+            code:'NOT_FOUND_ERROR',
+            message:'The requested document was not found.',
+          });
         }
-  
+
         const populatedDoc = populate
           ? await document.populate(this.config.populate.fields)
           : document;
-  
+
         return {
           success: true,
           data: {
@@ -524,11 +526,11 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('DATABASE_ERROR', (error as Error).message),
+            : new ErrorResponse({code:'DATABASE_ERROR', message:(error as Error).message}),
       };
     }
   }
-  
+
 
   async update(
     query: FilterQuery<T>,
@@ -538,15 +540,15 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     try {
       const documentToUpdate = await this.repository.findOne(
         query,
-        { },
+        {},
         includeDeleted,
       );
 
       if (!documentToUpdate) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Document to update not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Document to update not found.',
+        });
       }
 
       await this.executeHook('beforeUpdate', documentToUpdate, updateInput);
@@ -560,7 +562,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       if (
         this.config.slug.enabled &&
         (updateInput as any)[this.config.slug.sourceField] !==
-          documentToUpdate[this.config.slug.sourceField]
+        documentToUpdate[this.config.slug.sourceField]
       ) {
         await this.generateUniqueSlug(
           { ...updateInput, _id: documentToUpdate._id } as Partial<T>,
@@ -576,32 +578,35 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       );
 
       if (!updatedDocument) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Updated document not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Updated document not found.',
+        });
       }
 
       await this.executeHook('afterUpdate', updatedDocument);
 
       const populatedDoc = this.config.populate.defaultPopulate
         ? await updatedDocument
-            .populate(this.config.populate.fields)
+          .populate(this.config.populate.fields)
         : updatedDocument;
 
-        return {
-          success: true,
-          data: {
-            docs: populatedDoc,
-          },
-        };
+      return {
+        success: true,
+        data: {
+          docs: populatedDoc,
+        },
+      };
     } catch (error) {
       return {
         success: false,
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('DATABASE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'DATABASE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
@@ -613,10 +618,10 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       const documentToDelete = await this.repository.findOne(query);
 
       if (!documentToDelete) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Document to delete not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Document to delete not found.',
+        });
       }
 
       await this.executeHook('beforeDelete', documentToDelete);
@@ -628,19 +633,17 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       );
 
       if (!deletedDocument) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          this.config.softDelete
-            ? 'Document to soft delete not found.'
-            : 'Document to delete not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: this.config.softDelete ? 'Document to soft delete not found.' : 'Document to delete not found.',
+        });
       }
 
       await this.executeHook('afterDelete', deletedDocument);
 
       const populatedDoc = this.config.populate.defaultPopulate
         ? await deletedDocument
-            .populate(this.config.populate.fields)
+          .populate(this.config.populate.fields)
         : deletedDocument;
 
       return { success: true, data: { docs: populatedDoc } };
@@ -650,7 +653,10 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('DATABASE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'DATABASE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
@@ -670,31 +676,34 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           }),
         );
       }
-  
+
       const createdDocs = await this.repository.createMany(
-        documents, 
+        documents,
         options.ordered ?? true
       );
-  
+
       await Promise.all(
         createdDocs.map(async (doc) => {
           await this.executeHook('afterCreate', doc);
         }),
       );
-  
+
       return {
         success: true,
         data: {
           docs: createdDocs,
         },
-      };      
+      };
     } catch (error) {
       return {
         success: false,
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('BULK_CREATE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'BULK_CREATE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
@@ -713,21 +722,21 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           ),
         );
       }
-  
+
       const modified = await this.repository.updateMany(filter, update);
       return {
         success: true,
         data: {
           modified,
         },
-      };      
+      };
     } catch (error) {
       return {
         success: false,
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('BULK_UPDATE_ERROR', (error as Error).message),
+            : new ErrorResponse({ code: 'BULK_UPDATE_ERROR', message: (error as Error).message }),
       };
     }
   }
@@ -738,23 +747,23 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     if (!this.config.softDelete) {
       return {
         success: false,
-        error: new ErrorResponse(
-          'OPERATION_NOT_SUPPORTED',
-          'Soft delete is not enabled for this service.',
-        ),
+        error: new ErrorResponse({
+          code: 'OPERATION_NOT_SUPPORTED',
+          message: 'Soft delete is not enabled for this service.',
+        }),
       };
     }
-  
+
     try {
       const restoredDoc = await this.repository.restore(query);
-  
+
       if (!restoredDoc) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Document not found in deleted state.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Document not found in deleted state.',
+        });
       }
-  
+
       return { success: true, data: { docs: restoredDoc } };
     } catch (error) {
       return {
@@ -762,7 +771,10 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('RESTORE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'RESTORE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
@@ -774,10 +786,10 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     try {
       const doc = await this.repository.findById(id);
       if (!doc) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Source document not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Source document not found.',
+        });
       }
 
       const cloneData = {
@@ -795,7 +807,10 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('CLONE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'CLONE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
@@ -806,10 +821,10 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
   ): Promise<SuccessResponseType<any[]> | ErrorResponseType> {
     try {
       if (!this.config.aggregation.customPipelines[pipelineName]) {
-        throw new ErrorResponse(
-          'PIPELINE_NOT_FOUND',
-          `Aggregation pipeline '${pipelineName}' not found.`,
-        );
+        throw new ErrorResponse({
+          code: 'PIPELINE_NOT_FOUND',
+          message: `Aggregation pipeline '${pipelineName}' not found.`,
+        });
       }
 
       const pipeline = this.config.aggregation.customPipelines[pipelineName](
@@ -824,10 +839,10 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse(
-                'AGGREGATION_ERROR',
-                (error as Error).message,
-              ),
+            : new ErrorResponse({
+              code: 'AGGREGATION_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
@@ -840,7 +855,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       const documents = await this.repository.findAll(query);
 
       if (format === 'csv') {
-        
+
         const headers = Object.keys(this.repository.getModel().schema.paths);
         const rows = documents.map((doc) => {
           const row: Record<string, any> = {};
@@ -850,7 +865,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           return row;
         });
 
-        
+
         const csv = [
           headers.join(','),
           ...rows.map((row) =>
@@ -858,17 +873,20 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           ),
         ].join('\n');
 
-        return { success: true, data: { result:csv, format: 'csv' },  };
+        return { success: true, data: { result: csv, format: 'csv' }, };
       }
 
-      return { success: true, data: { result:documents, format: 'json'}, };
+      return { success: true, data: { result: documents, format: 'json' }, };
     } catch (error) {
       return {
         success: false,
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('EXPORT_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'EXPORT_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
@@ -880,18 +898,18 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
   ): Promise<SuccessResponseType<T> | ErrorResponseType> {
     try {
       const document = await this.repository.findById(id, includeDeleted);
-  
+
       if (!document) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'The requested document was not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'The requested document was not found.',
+        });
       }
-  
+
       const populatedDoc = populate
         ? await document.populate(this.config.populate.fields)
         : document;
-  
+
       return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
       return {
@@ -899,52 +917,55 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('DATABASE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'DATABASE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
-  
+
   async updateById(
     id: string | Types.ObjectId,
     updateInput: UpdateQuery<T>,
   ): Promise<SuccessResponseType<T> | ErrorResponseType> {
     try {
       const documentToUpdate = await this.repository.findById(id);
-  
+
       if (!documentToUpdate) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Document to update not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Document to update not found.',
+        });
       }
-  
+
       await this.executeHook('beforeUpdate', documentToUpdate, updateInput);
-  
+
       await this.validateUniqueFields(
         updateInput as Partial<T>,
         documentToUpdate._id as Types.ObjectId,
       );
       await this.validateDocument(updateInput as Partial<T>);
-  
+
       const updatedDocument = await this.repository.updateById(
         id,
         updateInput,
       );
-  
+
       if (!updatedDocument) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Updated document not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Updated document not found.',
+        });
       }
-  
+
       await this.executeHook('afterUpdate', updatedDocument);
-  
+
       const populatedDoc = this.config.populate.defaultPopulate
         ? await updatedDocument
-            .populate(this.config.populate.fields)
+          .populate(this.config.populate.fields)
         : updatedDocument;
-  
+
       return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
       return {
@@ -952,47 +973,48 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('DATABASE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'DATABASE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
-  
+
   async deleteById(
     id: string | Types.ObjectId,
   ): Promise<SuccessResponseType<T> | ErrorResponseType> {
     try {
       const documentToDelete = await this.repository.findById(id);
-  
+
       if (!documentToDelete) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Document to delete not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Document to delete not found.',
+        });
       }
-  
+
       await this.executeHook('beforeDelete', documentToDelete);
-  
+
       const deletedDocument = await this.repository.deleteById(
         id,
         this.config.softDelete,
       );
-  
+
       if (!deletedDocument) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          this.config.softDelete
-            ? 'Document to soft delete not found.'
-            : 'Document to delete not found.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: this.config.softDelete ? 'Document to soft delete not found.' : 'Document to delete not found.',
+        });
       }
-  
+
       await this.executeHook('afterDelete', deletedDocument);
-  
+
       const populatedDoc = this.config.populate.defaultPopulate
         ? await deletedDocument
-            .populate(this.config.populate.fields)
+          .populate(this.config.populate.fields)
         : deletedDocument;
-  
+
       return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
       return {
@@ -1000,68 +1022,74 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('DATABASE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'DATABASE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
-  
+
   async restoreById(
     id: string | Types.ObjectId,
   ): Promise<SuccessResponseType<T> | ErrorResponseType> {
     if (!this.config.softDelete) {
       return {
         success: false,
-        error: new ErrorResponse(
-          'OPERATION_NOT_SUPPORTED',
-          'Soft delete is not enabled for this service.',
-        ),
+        error: new ErrorResponse({
+          code: 'OPERATION_NOT_SUPPORTED',
+          message: 'Soft delete is not enabled for this service.',
+        }),
       };
     }
-  
+
     try {
       const restoredDoc = await this.repository.restoreById(id);
-  
+
       if (!restoredDoc) {
-        throw new ErrorResponse(
-          'NOT_FOUND_ERROR',
-          'Document not found in deleted state.',
-        );
+        throw new ErrorResponse({
+          code: 'NOT_FOUND_ERROR',
+          message: 'Document not found in deleted state.',
+        });
       }
-  
-      return { success: true, data: {docs:restoredDoc} };
+
+      return { success: true, data: { docs: restoredDoc } };
     } catch (error) {
       return {
         success: false,
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('RESTORE_ERROR', (error as Error).message),
+            : new ErrorResponse({
+              code: 'RESTORE_ERROR',
+              message: (error as Error).message,
+            }),
       };
     }
   }
-  
+
   async bulkDelete(
     filter: FilterQuery<T>,
     softDelete = true,
   ): Promise<SuccessResponseType<{ deleted: number }> | ErrorResponseType> {
     try {
       const deleted = await this.repository.deleteMany(filter, softDelete);
-      return { success: true, data :{ deleted } };
+      return { success: true, data: { deleted } };
     } catch (error) {
       return {
         success: false,
         error:
           error instanceof ErrorResponse
             ? error
-            : new ErrorResponse('BULK_DELETE_ERROR', (error as Error).message),
+            : new ErrorResponse({ code: 'BULK_DELETE_ERROR', message: (error as Error).message }),
       };
     }
   }
 
   async batchCreate(
     documents: Partial<T>[],
-    options: { 
-      skipValidation?: boolean; 
+    options: {
+      skipValidation?: boolean;
       ordered?: boolean;
       validateBeforeInsert?: boolean;
     } = {}
@@ -1076,17 +1104,17 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           })
         );
       }
-  
+
       const createdDocuments = await this.repository.createMany(
-        documents, 
+        documents,
         options.ordered ?? true
       );
-  
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         data: {
           docs: createdDocuments,
-          total: createdDocuments.length 
+          total: createdDocuments.length
         },
       };
     } catch (error) {
@@ -1094,17 +1122,20 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         success: false,
         error: error instanceof ErrorResponse
           ? error
-          : new ErrorResponse('BATCH_CREATE_ERROR', (error as Error).message),
+          : new ErrorResponse({
+            code: 'BATCH_CREATE_ERROR',
+            message: (error as Error).message,
+          }),
       };
     }
   }
-  
+
   async batchUpdate(
     updates: Array<{
       filter: FilterQuery<T>,
       update: UpdateQuery<T>
     }>,
-    options: { 
+    options: {
       validateEach?: boolean;
       stopOnError?: boolean;
     } = {}
@@ -1115,22 +1146,22 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           if (options.validateEach) {
             const docsToUpdate = await this.repository.findAll(filter);
             await Promise.all(
-              docsToUpdate.map(doc => 
+              docsToUpdate.map(doc =>
                 this.validateDocument({ ...doc.toObject(), ...update })
               )
             );
           }
-          
+
           return this.repository.updateMany(filter, update);
         })
       );
-  
+
       const totalUpdated = results.reduce((sum, result) => sum + result, 0);
-  
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         data: {
-          updated: totalUpdated 
+          updated: totalUpdated
         },
       };
     } catch (error) {
@@ -1138,38 +1169,38 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         success: false,
         error: error instanceof ErrorResponse
           ? error
-          : new ErrorResponse('BATCH_UPDATE_ERROR', (error as Error).message),
+          : new ErrorResponse({ code: 'BATCH_UPDATE_ERROR', message: (error as Error).message }),
       };
     }
   }
-  
+
   async batchDelete(
     filters: FilterQuery<T>[],
-    options: { 
+    options: {
       softDelete?: boolean;
       validateBeforeDelete?: boolean;
     } = {}
   ): Promise<SuccessResponseType<{ deleted: number }> | ErrorResponseType> {
     try {
       const softDelete = options.softDelete ?? this.config.softDelete;
-      
+
       const results = await Promise.all(
         filters.map(async (filter) => {
           if (options.validateBeforeDelete) {
             const docsToDelete = await this.repository.findAll(filter);
             if (docsToDelete.length === 0) return 0;
           }
-          
+
           return this.repository.deleteMany(filter, softDelete);
         })
       );
-  
+
       const totalDeleted = results.reduce((sum, result) => sum + result, 0);
-  
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         data: {
-          deleted: totalDeleted 
+          deleted: totalDeleted
         },
       };
     } catch (error) {
@@ -1177,27 +1208,27 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         success: false,
         error: error instanceof ErrorResponse
           ? error
-          : new ErrorResponse('BATCH_DELETE_ERROR', (error as Error).message),
+          : new ErrorResponse({ code: 'BATCH_DELETE_ERROR', message: (error as Error).message }),
       };
     }
   }
-  
+
   async batchRestore(
     filters: FilterQuery<T>[],
-    options: { 
+    options: {
       validateBeforeRestore?: boolean;
     } = {}
   ): Promise<SuccessResponseType<{ restored: number }> | ErrorResponseType> {
     if (!this.config.softDelete) {
       return {
         success: false,
-        error: new ErrorResponse(
-          'OPERATION_NOT_SUPPORTED',
-          'Soft delete is not enabled for this service.'
-        ),
+        error: new ErrorResponse({
+          code: 'OPERATION_NOT_SUPPORTED',
+          message: 'Soft delete is not enabled for this service.'
+        }),
       };
     }
-  
+
     try {
       const results = await Promise.all(
         filters.map(async (filter) => {
@@ -1207,18 +1238,18 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
             );
             if (docsToRestore.length === 0) return 0;
           }
-          
+
           const restoredCount = await this.repository.restoreMany(filter);
           return restoredCount;
         })
       );
-  
+
       const totalRestored = results.reduce((sum, result) => sum + result, 0);
-  
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         data: {
-          restored: totalRestored 
+          restored: totalRestored
         },
       };
     } catch (error) {
@@ -1226,7 +1257,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         success: false,
         error: error instanceof ErrorResponse
           ? error
-          : new ErrorResponse('BATCH_RESTORE_ERROR', (error as Error).message),
+          : new ErrorResponse({ code: 'BATCH_RESTORE_ERROR', message: (error as Error).message }),
       };
     }
   }
