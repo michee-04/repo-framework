@@ -23,6 +23,11 @@ const softDeletePlugin = (schema: Schema) => {
   schema.pre('findOne', addNotDeletedCondition);
   schema.pre('findOneAndUpdate', addNotDeletedCondition);
   schema.pre('updateMany', addNotDeletedCondition);
+  schema.pre('countDocuments', addNotDeletedCondition);
+  schema.pre('aggregate', function (next) {
+    this.pipeline().unshift({ $match: { [deletedAtField]: null } });
+    next();
+  });
 };
 
 export default softDeletePlugin;

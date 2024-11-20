@@ -1,7 +1,7 @@
 import { AsyncStorageService } from '@nodesandbox/async-storage';
-import { Document, model, Schema, Types } from 'mongoose';
+import { Document, Schema, Types, Connection, Model } from 'mongoose';
 
-const ASYNC_STORAGE = AsyncStorageService.getInstance()
+const ASYNC_STORAGE = AsyncStorageService.getInstance();
 
 interface IHistoryDocument extends Document {
   originalId: Types.ObjectId;
@@ -28,19 +28,33 @@ const historySchema = new Schema<IHistoryDocument>(
   { timestamps: true },
 );
 
-const HistoryModel = model<IHistoryDocument>('History', historySchema);
+class HistoryModelSingleton {
+  private static models = new Map<Connection, Model<IHistoryDocument>>();
+
+  static getModel(connection: Connection): Model<IHistoryDocument> {
+    if (!this.models.has(connection)) {
+      const model = connection.model<IHistoryDocument>('History', historySchema);
+      this.models.set(connection, model);
+    }
+    return this.models.get(connection)!;
+  }
+}
 
 const historyPlugin = <T extends Document>(
   schema: Schema<T>,
   options: { modelName: string },
 ) => {
   const createHistoryEntry = async (
-    doc: Document,
+    doc: Document & { constructor: any },
     action: string,
     changes: Record<string, any> = {},
     snapshot?: any,
   ) => {
     const currentUserId = ASYNC_STORAGE.get('currentUserId');
+
+    const connection = doc.constructor.db;
+
+    const HistoryModel = HistoryModelSingleton.getModel(connection);
 
     await new HistoryModel({
       originalId: doc._id,
@@ -119,13 +133,13 @@ const historyPlugin = <T extends Document>(
 
   schema.pre('findOneAndUpdate', async function (next) {
     const doc = await this.model.findOne(this.getQuery());
-    const changes = this.getUpdate();
+    const updates = this.getUpdate();
     if (doc) {
-      const snapshot = { ...doc.toObject(), ...changes };
+      const snapshot = { ...doc.toObject(), ...updates };
       await createHistoryEntry(
         doc as Document,
         'update',
-        changes as Record<string, any>,
+        updates as Record<string, any>,
         snapshot,
       );
     }

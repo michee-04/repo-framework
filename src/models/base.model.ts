@@ -21,7 +21,7 @@ function createBaseSchema<T extends IBaseModel>(
     },
     { timestamps: true },
   );
-
+  
   PluginManager.applyPlugins(baseSchema, {
     exclude: options.excludePlugins,
     include: options.includePlugins,
