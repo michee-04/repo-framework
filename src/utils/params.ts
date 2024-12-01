@@ -1,6 +1,7 @@
 type SortType = Record<string, 1 | -1>;
 
 export const parseSortParam = (sortParam: string): SortType => {
+  if (!sortParam) return {};
   const sortFields = sortParam.split(',');
   const sortObj: SortType = {};
 
