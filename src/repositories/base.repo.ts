@@ -46,7 +46,7 @@ export class BaseRepository<T extends Document> implements IBaseRepository<T> {
     includeDeleted = false,
   ): Promise<T | null> {
     const objectId = typeof id === 'string' ? new Types.ObjectId(id) : id;
-    const query = includeDeleted 
+    const query = includeDeleted
       ? { _id: objectId }
       : { _id: objectId, deletedAt: null };
     return await this.model.findOne(query).exec();
@@ -145,19 +145,38 @@ export class BaseRepository<T extends Document> implements IBaseRepository<T> {
   }
 
   async restore(query: FilterQuery<T>): Promise<T | null> {
-    return await this.update(
+    const deletedDoc = await this.findOne(
       { ...query, deletedAt: { $ne: null } },
-      { $unset: { deletedAt: 1 } } as UpdateQuery<T>,
       {},
-      true,
+      true
+    );
+  
+    if (!deletedDoc) {
+      return null;
+    }
+  
+    return await this.update(
+      { _id: deletedDoc._id },
+      { $unset: { deletedAt: 1, deletedBy: 1 } },
+      { new: true },
+      true
     );
   }
 
   async restoreById(id: string | Types.ObjectId): Promise<T | null> {
     const objectId = typeof id === 'string' ? new Types.ObjectId(id) : id;
-    return await this.updateById(
-      objectId,
-      { $unset: { deletedAt: 1 } } as UpdateQuery<T>,
+  
+    const deletedDoc = await this.findById(objectId, true);
+  
+    if (!deletedDoc) {
+      return null;
+    }
+  
+    return await this.update(
+      { _id: objectId },
+      { $unset: { deletedAt: 1, deletedBy: 1 } },
+      {},
+      true
     );
   }
 

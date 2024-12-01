@@ -756,7 +756,6 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
 
     try {
       const restoredDoc = await this.repository.restore(query);
-
       if (!restoredDoc) {
         throw new ErrorResponse({
           code: 'NOT_FOUND_ERROR',
@@ -1042,7 +1041,6 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         }),
       };
     }
-
     try {
       const restoredDoc = await this.repository.restoreById(id);
 
