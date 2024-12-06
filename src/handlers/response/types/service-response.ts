@@ -9,9 +9,12 @@ export type SuccessResponseType<T> = {
   };
 };
 
+
 export type ErrorResponseType = {
   success: boolean;
   error: ErrorResponse;
+  data?: never;
+  meta?: never;
 };
 
 type MetaType = {
