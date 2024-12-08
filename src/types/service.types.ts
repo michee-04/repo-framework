@@ -29,10 +29,19 @@ export interface PaginationConfig {
     uniqueResolver: (baseSlug: string, count: number) => string;
   }
   
-  export interface PopulateConfig {
-    fields: string[];
+  type PopulateFieldSimple = string;
+  
+  type PopulateFieldAdvanced = {
+    path: string;
+    select?: string | Record<string, 1 | 0>;
+    match?: Record<string, any>;
+    options?: Record<string, any>;
+  };
+
+  export type PopulateConfig = {
+    fields: (PopulateFieldSimple | PopulateFieldAdvanced)[];
     defaultPopulate: boolean;
-  }
+  };
   
   export interface ValidationConfig<T> {
     customValidators: Partial<

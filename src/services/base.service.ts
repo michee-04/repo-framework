@@ -229,6 +229,23 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     doc[targetField] = slug as T[keyof T];
   }
 
+  private async applyPopulation(doc: T): Promise<T> {
+    if (!this.config.populate.defaultPopulate || !this.config.populate.fields.length) {
+      return doc;
+    }
+  
+    const populateOptions = this.config.populate.fields.map((field) => {
+      if (typeof field === 'string') {
+        return { path: field };
+      }
+  
+      const { path, select, match, options } = field;
+      return { path, select, match, options };
+    });
+  
+    return doc.populate(populateOptions);
+  }
+  
 
 
   private async runCustomValidators(doc: Partial<T>): Promise<void> {
@@ -309,7 +326,6 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     return filteredQuery as FilterQuery<T>;
   }
 
-
   protected getCacheKey(method: string, params: any): string {
     return `${method}:${JSON.stringify(params)}`;
   }
@@ -370,8 +386,8 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       await this.executeHook('afterCreate', document);
 
       const populatedDoc = this.config.populate.defaultPopulate
-        ? await document.populate(this.config.populate.fields)
-        : document;
+      ? await this.applyPopulation(document)
+      : document;
 
       return {
         success: true,
@@ -441,17 +457,16 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
 
         const [documents, total] = await Promise.all([
           this.repository.findAll(finalQuery, options, includeDeleted),
-          this.repository.countDocuments({}, includeDeleted),
+          this.repository.countDocuments({},{}, includeDeleted),
         ]);
 
         const populatedDocs = populate
-          ? await Promise.all(
-            documents.map((doc) => doc.populate(this.config.populate.fields)),
-          )
-          : documents;
+        ? await Promise.all(documents.map((doc) => this.applyPopulation(doc)))
+        : documents;
 
         const results = await this.repository.countDocuments(
           finalQuery,
+          {},
           includeDeleted,
         );
 
@@ -469,6 +484,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
               limit: finalLimit,
               totalPages: Math.ceil(results / finalLimit),
               remainingItems,
+              pageItemsCount: documents.length
             }),
           },
           data: {
@@ -486,7 +502,6 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       }
     }
   }
-
 
   async findOne(
     query: FilterQuery<T>,
@@ -509,9 +524,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           });
         }
 
-        const populatedDoc = populate
-          ? await document.populate(this.config.populate.fields)
-          : document;
+        const populatedDoc = populate ? await this.applyPopulation(document) : document;
 
         return {
           success: true,
@@ -530,7 +543,6 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       };
     }
   }
-
 
   async update(
     query: FilterQuery<T>,
@@ -587,9 +599,8 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       await this.executeHook('afterUpdate', updatedDocument);
 
       const populatedDoc = this.config.populate.defaultPopulate
-        ? await updatedDocument
-          .populate(this.config.populate.fields)
-        : updatedDocument;
+      ? await this.applyPopulation(updatedDocument)
+      : updatedDocument;
 
       return {
         success: true,
@@ -642,9 +653,8 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       await this.executeHook('afterDelete', deletedDocument);
 
       const populatedDoc = this.config.populate.defaultPopulate
-        ? await deletedDocument
-          .populate(this.config.populate.fields)
-        : deletedDocument;
+      ? await this.applyPopulation(deletedDocument)
+      : deletedDocument;
 
       return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
@@ -763,7 +773,11 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         });
       }
 
-      return { success: true, data: { docs: restoredDoc } };
+      const populatedDoc = this.config.populate.defaultPopulate
+      ? await this.applyPopulation(restoredDoc)
+      : restoredDoc;
+
+      return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
       return {
         success: false,
@@ -797,6 +811,8 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         _id: undefined,
         createdAt: undefined,
         updatedAt: undefined,
+        deletedAt: undefined,
+        deletedBy: undefined,
       };
 
       return this.create(cloneData);
@@ -906,8 +922,8 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       }
 
       const populatedDoc = populate
-        ? await document.populate(this.config.populate.fields)
-        : document;
+      ? await this.applyPopulation(document)
+      : document;
 
       return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
@@ -961,9 +977,8 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       await this.executeHook('afterUpdate', updatedDocument);
 
       const populatedDoc = this.config.populate.defaultPopulate
-        ? await updatedDocument
-          .populate(this.config.populate.fields)
-        : updatedDocument;
+      ? await this.applyPopulation(updatedDocument)
+      : updatedDocument;
 
       return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
@@ -1010,9 +1025,8 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       await this.executeHook('afterDelete', deletedDocument);
 
       const populatedDoc = this.config.populate.defaultPopulate
-        ? await deletedDocument
-          .populate(this.config.populate.fields)
-        : deletedDocument;
+      ? await this.applyPopulation(deletedDocument)
+      : deletedDocument;
 
       return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
@@ -1051,7 +1065,11 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         });
       }
 
-      return { success: true, data: { docs: restoredDoc } };
+      const populatedDoc = this.config.populate.defaultPopulate
+      ? await this.applyPopulation(restoredDoc)
+      : restoredDoc;
+
+      return { success: true, data: { docs: populatedDoc } };
     } catch (error) {
       return {
         success: false,
@@ -1259,7 +1277,6 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
       };
     }
   }
-
 
   /**
    * NOTE
