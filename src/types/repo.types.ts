@@ -14,7 +14,7 @@ export interface IBaseRepository<T> {
     deleteMany(filter: FilterQuery<T>, softDelete?: boolean): Promise<number>;
     restore(query: FilterQuery<T>): Promise<T | null>;
     restoreById(id: string | Types.ObjectId): Promise<T | null>;
-    countDocuments(query?: FilterQuery<T>, includeDeleted?: boolean): Promise<number>;
+    countDocuments(query?: FilterQuery<T>,options?: { limit?: number; skip?: number }, includeDeleted?: boolean): Promise<number>;
     exists(filter: FilterQuery<T>, includeDeleted?: boolean): Promise<boolean>;
     aggregate(pipeline: PipelineStage[]): Promise<any[]>;
   }

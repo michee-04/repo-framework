@@ -190,7 +190,7 @@ export class BaseRepository<T extends Document> implements IBaseRepository<T> {
     return result.modifiedCount || 0;
   }
 
-  async countDocuments(
+  /*async countDocuments(
     query: FilterQuery<T> = {},
     includeDeleted = false,
   ): Promise<number> {
@@ -198,6 +198,28 @@ export class BaseRepository<T extends Document> implements IBaseRepository<T> {
       ? query
       : { ...query, deletedAt: null };
     return await this.model.countDocuments(effectiveQuery).exec();
+  }*/
+
+  async countDocuments(
+    query: FilterQuery<T> = {},
+    options: { limit?: number; skip?: number } = {},
+    includeDeleted = false,
+  ): Promise<number> {
+    const effectiveQuery = includeDeleted
+      ? query
+      : { ...query, deletedAt: null };
+    
+    const countQuery = this.model.countDocuments(effectiveQuery);
+    
+    if (options.limit !== undefined) {
+      countQuery.limit(options.limit);
+    }
+    
+    if (options.skip !== undefined) {
+      countQuery.skip(options.skip);
+    }
+    
+    return await countQuery.exec();
   }
 
   async exists(
