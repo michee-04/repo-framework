@@ -433,14 +433,12 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     populate?: boolean;
   } = {}): Promise<SuccessResponseType<T> | ErrorResponseType> {
     try {
-      Logger.info("Got query", query);
       const cacheKey = this.getCacheKey('findAll', arguments[0]);
       return this.getCachedData(cacheKey, async () => {
         const finalQuery = {
           ...this.filterAllowedFields(query),
           ...this.buildSearchQuery(searchTerm),
         };
-        Logger.info('findall final query', finalQuery);
         const finalSort = sort || this.config.filter.defaultSort;
         const finalPage = Math.max(
           1,
@@ -884,7 +882,6 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
         });
       }
       
-      Logger.info('Query', query);
 
       const results = await this.findAll({ query });
 
