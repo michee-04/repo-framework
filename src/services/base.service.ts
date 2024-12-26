@@ -22,6 +22,9 @@ import {
   MergedServiceConfig,
 } from '../types';
 import { ErrorResponse, ErrorResponseType, SuccessResponseType } from '../handlers';
+import { LoggerService } from '@nodesandbox/logger';
+
+const Logger = LoggerService.getInstance();
 
 export class BaseService<T extends Document, R extends BaseRepository<T>> {
   protected readonly repository: R;
@@ -430,18 +433,20 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
     populate?: boolean;
   } = {}): Promise<SuccessResponseType<T> | ErrorResponseType> {
     try {
+      Logger.info("Got query", query);
       const cacheKey = this.getCacheKey('findAll', arguments[0]);
       return this.getCachedData(cacheKey, async () => {
         const finalQuery = {
           ...this.filterAllowedFields(query),
           ...this.buildSearchQuery(searchTerm),
         };
-
+        Logger.info('findall final query', finalQuery);
         const finalSort = sort || this.config.filter.defaultSort;
         const finalPage = Math.max(
           1,
           page ?? this.config.pagination.defaultPage,
         );
+
         const finalLimit = Math.min(
           this.config.pagination.maxLimit,
           limit ?? this.config.pagination.defaultLimit,
@@ -470,10 +475,11 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           includeDeleted,
         );
 
+        const totalPages = Math.ceil(results / finalLimit);
         const itemsFetched = finalPage * finalLimit;
         const remaining = results - itemsFetched;
         const remainingItems = remaining > 0 ? remaining : 0;
-
+        
         return {
           success: true,
           meta: {
@@ -482,7 +488,7 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
             ...(paginate && {
               page: finalPage,
               limit: finalLimit,
-              totalPages: Math.ceil(results / finalLimit),
+              totalPages,
               remainingItems,
               pageItemsCount: documents.length
             }),
@@ -865,33 +871,51 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
   async exportData(
     query: FilterQuery<T> = {},
     format: 'json' | 'csv' = 'json',
-  ): Promise<SuccessResponseType<any> | ErrorResponseType> {
+    options: {
+      include?: string[]; 
+      exclude?: string[];
+    } = {},
+  ): Promise<SuccessResponseType<T> | ErrorResponseType> {
     try {
-      const documents = await this.repository.findAll(query);
-
-      if (format === 'csv') {
-
-        const headers = Object.keys(this.repository.getModel().schema.paths);
-        const rows = documents.map((doc) => {
-          const row: Record<string, any> = {};
-          headers.forEach((header) => {
-            row[header] = doc.get(header);
-          });
-          return row;
+      if (options.include && options.exclude) {
+        throw new ErrorResponse({
+          code: 'EXPORT_ERROR',
+          message: 'Les options "include" et "exclude" ne peuvent pas être utilisées ensemble.',
         });
+      }
+      
+      Logger.info('Query', query);
 
+      const results = await this.findAll({ query });
 
-        const csv = [
-          headers.join(','),
-          ...rows.map((row) =>
-            headers.map((header) => row[header]).join(','),
-          ),
-        ].join('\n');
-
-        return { success: true, data: { result: csv, format: 'csv' }, };
+      if(!results.success){
+        throw results.error;
       }
 
-      return { success: true, data: { result: documents, format: 'json' }, };
+      const documents = results?.data?.docs as T[];
+      
+      const allFields = Object.keys(this.repository.getModel().schema.paths);
+  
+      let fields = allFields;
+      if (options.include) {
+        fields = options.include;
+      } else if (options.exclude) {
+        fields = fields.filter((field) => !(options.exclude?.includes(field)));
+      }
+  
+      const filteredDocuments = documents.map((doc) =>
+        fields.reduce((acc, field) => {
+          acc[field] = doc.get(field);
+          return acc;
+        }, {} as Record<string, any>),
+      );
+  
+      if (format === 'csv') {
+        const csv = this.generateCSV(fields, filteredDocuments);
+        return { success: true, data: { result: csv, format: 'csv' } };
+      }
+  
+      return { success: true, data: { result: filteredDocuments, format: 'json' } };
     } catch (error) {
       return {
         success: false,
@@ -899,12 +923,32 @@ export class BaseService<T extends Document, R extends BaseRepository<T>> {
           error instanceof ErrorResponse
             ? error
             : new ErrorResponse({
-              code: 'EXPORT_ERROR',
-              message: (error as Error).message,
-            }),
+                code: 'EXPORT_ERROR',
+                message: (error as Error).message,
+                statusCode:400,
+              }),
       };
     }
   }
+  
+  private generateCSV(headers: string[], rows: Record<string, any>[]): string {
+    const csvRows = [
+      headers.join(','),
+      ...rows.map((row) =>
+        headers
+          .map((header) => {
+            const value = row[header];
+            if (typeof value === 'string' && value.includes(',')) {
+              return `"${value.replace(/"/g, '""')}"`;
+            }
+            return value || '';
+          })
+          .join(','),
+      ),
+    ];
+    return csvRows.join('\n');
+  }
+  
 
   async findById(
     id: string | Types.ObjectId,
