@@ -21,8 +21,9 @@ import {
   CacheEntry,
   MergedServiceConfig,
 } from '../types';
-import { ErrorResponse, ErrorResponseType, SuccessResponseType } from '../handlers';
 import { LoggerService } from '@nodesandbox/logger';
+import { ErrorResponse, ErrorResponseType, SuccessResponseType } from '@nodesandbox/response-kit';
+
 
 const Logger = LoggerService.getInstance();
 
